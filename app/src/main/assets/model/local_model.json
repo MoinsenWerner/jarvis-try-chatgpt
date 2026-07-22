@@ -1,0 +1,15 @@
+{
+  "format": "jarvis-keyword-v1",
+  "accuracy": 1.0,
+  "sample_count": 32,
+  "labels": {
+    "calendar_event": ["treffen", "termin", "geburtstag", "montag", "morgen", "uhr", "zahnarzt"],
+    "reminder": ["erinnere", "erinnerung", "denk", "vorher", "wäsche", "einkauf"],
+    "alarm": ["wecker", "weck", "alarm", "minuten", "werktags"],
+    "open_app": ["öffne", "starte", "app", "whatsapp", "youtube", "kalender", "maps"],
+    "draft_text": ["schreib", "antworte", "tippe", "formuliere", "antwort"],
+    "summarize": ["fasse", "zusammen", "zusammenfassung", "video", "sprachnachricht", "chat"],
+    "scroll": ["scrolle", "wische", "scroll", "ende", "runter"],
+    "note": ["merke", "speichere", "notiere", "gedächtnis", "information"]
+  }
+}
