@@ -14,7 +14,7 @@ import androidx.compose.runtime.Composable
  * official androidx.activity implementation.
  */
 fun ComponentActivity.setContent(content: @Composable () -> Unit) {
-    this.activitySetContent(content)
+    this.activitySetContent(content = content)
 }
 
 /**
