@@ -1,0 +1,25 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build debug APK
+        run: chmod +x scripts/setup_build.sh && scripts/setup_build.sh
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload model
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-local-model
+          path: app/src/main/assets/model/local_model.json
