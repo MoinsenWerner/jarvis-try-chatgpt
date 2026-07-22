@@ -16,6 +16,11 @@ android {
         versionName = "0.1.0"
     }
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -24,6 +29,10 @@ android {
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
     }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
