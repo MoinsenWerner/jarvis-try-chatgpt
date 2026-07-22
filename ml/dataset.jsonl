@@ -1,0 +1,32 @@
+{"text":"Treffen am Montag um 18 Uhr","label":"calendar_event"}
+{"text":"Geburtstag von Max am 12. August","label":"calendar_event"}
+{"text":"Wir sehen uns morgen um 9:30","label":"calendar_event"}
+{"text":"Termin Freitag 14 Uhr beim Zahnarzt","label":"calendar_event"}
+{"text":"Erinnere mich morgen an den Einkauf","label":"reminder"}
+{"text":"Denk in einer Stunde an die Wäsche","label":"reminder"}
+{"text":"Bitte Erinnerung fünf Tage vor dem Geburtstag","label":"reminder"}
+{"text":"Erinnere mich 15 Minuten vorher","label":"reminder"}
+{"text":"Stelle einen Wecker auf 6:30","label":"alarm"}
+{"text":"Weck mich morgen um sieben","label":"alarm"}
+{"text":"Alarm in 20 Minuten","label":"alarm"}
+{"text":"Wecker werktags um 6 Uhr","label":"alarm"}
+{"text":"Öffne WhatsApp","label":"open_app"}
+{"text":"Starte den Kalender","label":"open_app"}
+{"text":"Mach YouTube auf","label":"open_app"}
+{"text":"Öffne die App Maps","label":"open_app"}
+{"text":"Schreib Anna dass ich später komme","label":"draft_text"}
+{"text":"Antworte mit ja","label":"draft_text"}
+{"text":"Tippe folgenden Text","label":"draft_text"}
+{"text":"Formuliere eine Antwort","label":"draft_text"}
+{"text":"Fasse die Nachricht zusammen","label":"summarize"}
+{"text":"Was ist in diesem Video wichtig","label":"summarize"}
+{"text":"Zusammenfassung der Sprachnachricht","label":"summarize"}
+{"text":"Fass den Chat kurz zusammen","label":"summarize"}
+{"text":"Scrolle nach unten","label":"scroll"}
+{"text":"Wische nach oben","label":"scroll"}
+{"text":"Scroll bis zum Ende","label":"scroll"}
+{"text":"Gehe weiter runter","label":"scroll"}
+{"text":"Merke dir Milch kaufen","label":"note"}
+{"text":"Speichere diese Information","label":"note"}
+{"text":"Notiere die Telefonnummer","label":"note"}
+{"text":"Behalte das im Gedächtnis","label":"note"}
