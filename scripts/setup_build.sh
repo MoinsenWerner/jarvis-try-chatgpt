@@ -57,14 +57,17 @@ EOF
 
     ubuntu)
       local ubuntu_archive="https://archive.ubuntu.com/ubuntu"
+      local ubuntu_security="https://security.ubuntu.com/ubuntu"
+
       if [[ "$architecture" != "amd64" && "$architecture" != "i386" ]]; then
         ubuntu_archive="https://ports.ubuntu.com/ubuntu-ports"
+        ubuntu_security="$ubuntu_archive"
       fi
 
       cat > "$APT_SOURCE_FILE" <<EOF
 deb ${ubuntu_archive} ${codename} main universe
 deb ${ubuntu_archive} ${codename}-updates main universe
-deb https://security.ubuntu.com/ubuntu ${codename}-security main universe
+deb ${ubuntu_security} ${codename}-security main universe
 EOF
       ;;
 
@@ -84,12 +87,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
+validate_java() {
+  if ! command -v java >/dev/null 2>&1 || ! command -v javac >/dev/null 2>&1; then
+    echo "Java/Javac wurde nach der Installation nicht gefunden." >&2
+    return 1
+  fi
+
+  local java_version java_major
+  java_version="$(java -version 2>&1 | awk -F '"' '/version/ { print $2; exit }')"
+  java_major="${java_version%%.*}"
+
+  # Alte Java-Versionen meldeten beispielsweise 1.8 statt 8.
+  if [[ "$java_major" == "1" ]]; then
+    java_major="$(printf '%s' "$java_version" | cut -d. -f2)"
+  fi
+
+  if [[ ! "$java_major" =~ ^[0-9]+$ ]] || (( java_major < 17 )); then
+    echo "Jarvis benötigt Java 17 oder neuer; gefunden wurde: ${java_version:-unbekannt}." >&2
+    return 1
+  fi
+
+  echo "Java ${java_version} wurde erkannt."
+}
+
 install_system_dependencies() {
   if [[ "${JARVIS_USE_SYSTEM_APT_SOURCES:-0}" == "1" ]]; then
     echo "JARVIS_USE_SYSTEM_APT_SOURCES=1: Verwende die systemweit konfigurierten APT-Quellen."
     run_root apt-get update
     run_root apt-get install -y --no-install-recommends \
-      openjdk-17-jdk curl unzip python3 ca-certificates
+      default-jdk-headless curl unzip python3 ca-certificates
+    validate_java
     return
   fi
 
@@ -103,7 +130,9 @@ install_system_dependencies() {
 
   run_root apt-get "${apt_options[@]}" update
   run_root apt-get "${apt_options[@]}" install -y --no-install-recommends \
-    openjdk-17-jdk curl unzip python3 ca-certificates
+    default-jdk-headless curl unzip python3 ca-certificates
+
+  validate_java
 }
 
 install_system_dependencies
