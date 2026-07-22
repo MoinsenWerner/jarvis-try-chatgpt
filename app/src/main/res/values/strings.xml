@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Jarvis</string>
+    <string name="accessibility_description">Liest Inhalte ausgewählter Apps und führt ausschließlich freigegebene Aktionen aus.</string>
+</resources>
