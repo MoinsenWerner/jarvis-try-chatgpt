@@ -4,7 +4,11 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
 GRADLE_VERSION="8.11.1"
-CMDLINE_TOOLS_VERSION="11076708"
+CMDLINE_TOOLS_VERSION="15859902"
+CMDLINE_TOOLS_SHA256="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
+JDK_MAJOR="17"
+JDK_DIR="$ROOT/.tooling/jdk-$JDK_MAJOR"
+CMDLINE_TOOLS_DIR="$SDK/cmdline-tools/jarvis-$CMDLINE_TOOLS_VERSION"
 
 mkdir -p "$ROOT/.tooling"
 
@@ -48,11 +52,11 @@ create_isolated_apt_sources() {
 
   case "$distro_id" in
     debian)
-      cat > "$APT_SOURCE_FILE" <<EOF
+      cat > "$APT_SOURCE_FILE" <<APT_EOF
 deb https://deb.debian.org/debian ${codename} main
 deb https://deb.debian.org/debian ${codename}-updates main
 deb https://security.debian.org/debian-security ${codename}-security main
-EOF
+APT_EOF
       ;;
 
     ubuntu)
@@ -64,11 +68,11 @@ EOF
         ubuntu_security="$ubuntu_archive"
       fi
 
-      cat > "$APT_SOURCE_FILE" <<EOF
+      cat > "$APT_SOURCE_FILE" <<APT_EOF
 deb ${ubuntu_archive} ${codename} main universe
 deb ${ubuntu_archive} ${codename}-updates main universe
 deb ${ubuntu_security} ${codename}-security main universe
-EOF
+APT_EOF
       ;;
 
     *)
@@ -84,39 +88,19 @@ cleanup() {
   if [[ -n "${APT_SOURCE_FILE:-}" && -f "$APT_SOURCE_FILE" ]]; then
     rm -f "$APT_SOURCE_FILE"
   fi
+  if [[ -n "${JDK_EXTRACT_DIR:-}" && -d "$JDK_EXTRACT_DIR" ]]; then
+    rm -rf "$JDK_EXTRACT_DIR"
+  fi
 }
 trap cleanup EXIT
 
-validate_java() {
-  if ! command -v java >/dev/null 2>&1 || ! command -v javac >/dev/null 2>&1; then
-    echo "Java/Javac wurde nach der Installation nicht gefunden." >&2
-    return 1
-  fi
-
-  local java_version java_major
-  java_version="$(java -version 2>&1 | awk -F '"' '/version/ { print $2; exit }')"
-  java_major="${java_version%%.*}"
-
-  # Alte Java-Versionen meldeten beispielsweise 1.8 statt 8.
-  if [[ "$java_major" == "1" ]]; then
-    java_major="$(printf '%s' "$java_version" | cut -d. -f2)"
-  fi
-
-  if [[ ! "$java_major" =~ ^[0-9]+$ ]] || (( java_major < 17 )); then
-    echo "Jarvis benötigt Java 17 oder neuer; gefunden wurde: ${java_version:-unbekannt}." >&2
-    return 1
-  fi
-
-  echo "Java ${java_version} wurde erkannt."
-}
-
 install_system_dependencies() {
+  local packages=(curl unzip python3 ca-certificates tar gzip)
+
   if [[ "${JARVIS_USE_SYSTEM_APT_SOURCES:-0}" == "1" ]]; then
     echo "JARVIS_USE_SYSTEM_APT_SOURCES=1: Verwende die systemweit konfigurierten APT-Quellen."
     run_root apt-get update
-    run_root apt-get install -y --no-install-recommends \
-      default-jdk-headless curl unzip python3 ca-certificates
-    validate_java
+    run_root apt-get install -y --no-install-recommends "${packages[@]}"
     return
   fi
 
@@ -129,32 +113,128 @@ install_system_dependencies() {
   )
 
   run_root apt-get "${apt_options[@]}" update
-  run_root apt-get "${apt_options[@]}" install -y --no-install-recommends \
-    default-jdk-headless curl unzip python3 ca-certificates
+  run_root apt-get "${apt_options[@]}" install -y --no-install-recommends "${packages[@]}"
+}
 
-  validate_java
+map_adoptium_architecture() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "x64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    armv7l|armhf) echo "arm" ;;
+    ppc64le) echo "ppc64le" ;;
+    s390x) echo "s390x" ;;
+    *)
+      echo "Nicht unterstützte CPU-Architektur für das JDK: $(uname -m)" >&2
+      return 1
+      ;;
+  esac
+}
+
+java_major_from_binary() {
+  local java_binary="$1"
+  local java_version java_major
+  java_version="$($java_binary -version 2>&1 | awk -F '"' '/version/ { print $2; exit }')"
+  java_major="${java_version%%.*}"
+
+  if [[ "$java_major" == "1" ]]; then
+    java_major="$(printf '%s' "$java_version" | cut -d. -f2)"
+  fi
+
+  printf '%s' "$java_major"
+}
+
+install_pinned_jdk() {
+  if [[ -x "$JDK_DIR/bin/java" && -x "$JDK_DIR/bin/javac" ]]; then
+    local installed_major
+    installed_major="$(java_major_from_binary "$JDK_DIR/bin/java")"
+    if [[ "$installed_major" == "$JDK_MAJOR" ]]; then
+      echo "Verwende bereits installiertes projektlokales JDK $JDK_MAJOR."
+    else
+      echo "Projektlokales JDK hat Version $installed_major statt $JDK_MAJOR und wird ersetzt."
+      rm -rf "$JDK_DIR"
+    fi
+  fi
+
+  if [[ ! -x "$JDK_DIR/bin/java" ]]; then
+    local adoptium_arch archive extracted
+    adoptium_arch="$(map_adoptium_architecture)"
+    archive="$ROOT/.tooling/temurin-jdk-${JDK_MAJOR}-${adoptium_arch}.tar.gz"
+
+    echo "Lade Eclipse Temurin JDK $JDK_MAJOR für ${adoptium_arch} herunter."
+    curl --fail --location --retry 3 --retry-delay 2 \
+      "https://api.adoptium.net/v3/binary/latest/${JDK_MAJOR}/ga/linux/${adoptium_arch}/jdk/hotspot/normal/eclipse?project=jdk" \
+      -o "$archive"
+
+    JDK_EXTRACT_DIR="$(mktemp -d "$ROOT/.tooling/jdk-extract.XXXXXX")"
+    tar -xzf "$archive" -C "$JDK_EXTRACT_DIR"
+    extracted="$(find "$JDK_EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+
+    if [[ -z "$extracted" || ! -x "$extracted/bin/java" ]]; then
+      echo "Das heruntergeladene JDK-Archiv besitzt nicht die erwartete Struktur." >&2
+      return 1
+    fi
+
+    rm -rf "$JDK_DIR"
+    mv "$extracted" "$JDK_DIR"
+    rm -f "$archive"
+  fi
+
+  export JAVA_HOME="$JDK_DIR"
+  export PATH="$JAVA_HOME/bin:$PATH"
+  hash -r
+
+  local active_major
+  active_major="$(java_major_from_binary "$JAVA_HOME/bin/java")"
+  if [[ "$active_major" != "$JDK_MAJOR" ]]; then
+    echo "Jarvis benötigt für AGP 8.9/Gradle 8.11 JDK $JDK_MAJOR; aktiv ist $active_major." >&2
+    return 1
+  fi
+
+  echo "Verwende projektlokales Java: $($JAVA_HOME/bin/java -version 2>&1 | head -n 1)"
+}
+
+install_android_command_line_tools() {
+  local archive="$ROOT/.tooling/command-line-tools-${CMDLINE_TOOLS_VERSION}.zip"
+  local extract_dir="$ROOT/.tooling/cmdline-unpack-${CMDLINE_TOOLS_VERSION}"
+
+  if [[ -x "$CMDLINE_TOOLS_DIR/bin/sdkmanager" ]]; then
+    return
+  fi
+
+  echo "Lade Android Command-line Tools ${CMDLINE_TOOLS_VERSION} herunter."
+  curl --fail --location --retry 3 --retry-delay 2 \
+    "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
+    -o "$archive"
+
+  echo "${CMDLINE_TOOLS_SHA256}  ${archive}" | sha256sum --check --status || {
+    echo "Die Prüfsumme der Android Command-line Tools stimmt nicht." >&2
+    return 1
+  }
+
+  rm -rf "$extract_dir" "$CMDLINE_TOOLS_DIR"
+  mkdir -p "$extract_dir" "$CMDLINE_TOOLS_DIR"
+  unzip -q "$archive" -d "$extract_dir"
+  mv "$extract_dir/cmdline-tools"/* "$CMDLINE_TOOLS_DIR/"
+  rm -rf "$extract_dir"
+  rm -f "$archive"
 }
 
 install_system_dependencies
+install_pinned_jdk
 
 mkdir -p "$SDK/cmdline-tools" "$ROOT/.tooling"
-if [[ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]]; then
-  curl --fail --location --retry 3 --retry-delay 2 \
-    "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
-    -o "$ROOT/.tooling/commandline-tools.zip"
-
-  rm -rf "$ROOT/.tooling/cmdline-unpack" "$SDK/cmdline-tools/latest"
-  mkdir -p "$ROOT/.tooling/cmdline-unpack"
-  unzip -q "$ROOT/.tooling/commandline-tools.zip" -d "$ROOT/.tooling/cmdline-unpack"
-  mv "$ROOT/.tooling/cmdline-unpack/cmdline-tools" "$SDK/cmdline-tools/latest"
-fi
+install_android_command_line_tools
 
 export ANDROID_SDK_ROOT="$SDK"
 export ANDROID_HOME="$SDK"
-export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$PATH"
+export PATH="$CMDLINE_TOOLS_DIR/bin:$SDK/platform-tools:$PATH"
 
-yes | sdkmanager --licenses >/dev/null || true
-sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+SDKMANAGER="$CMDLINE_TOOLS_DIR/bin/sdkmanager"
+yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses >/dev/null || true
+"$SDKMANAGER" --sdk_root="$SDK" \
+  "platform-tools" \
+  "platforms;android-35" \
+  "build-tools;35.0.0"
 printf 'sdk.dir=%s\n' "$SDK" > "$ROOT/local.properties"
 
 python3 "$ROOT/ml/train_model.py" \
@@ -171,10 +251,12 @@ if [[ ! -x "$GRADLE_HOME/bin/gradle" ]]; then
 fi
 
 cd "$ROOT"
-"$GRADLE_HOME/bin/gradle" wrapper \
+"$GRADLE_HOME/bin/gradle" --no-daemon wrapper \
   --gradle-version "$GRADLE_VERSION" \
   --distribution-type bin
 chmod +x gradlew
-./gradlew --no-daemon clean assembleDebug
+
+JAVA_HOME="$JDK_DIR" PATH="$JDK_DIR/bin:$PATH" \
+  ./gradlew --no-daemon --stacktrace clean assembleDebug
 
 echo "APK: $ROOT/app/build/outputs/apk/debug/app-debug.apk"
